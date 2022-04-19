@@ -131,7 +131,7 @@ def broadcast(conn_client):
             vid = cv2.VideoCapture(0)
             print(f'Broadcasting video to user :{conn_client.Tostring()}')
             #set a size of video
-            Width = 800
+            Width = 400
             # if webcam is open
             while vid.isOpened():
 
