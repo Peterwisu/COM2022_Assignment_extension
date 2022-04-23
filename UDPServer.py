@@ -311,7 +311,7 @@ def handle_receive_connection():
 
 
             # limit number of client  to 6
-            if len(client_list) <=5:
+            if len(client_list) <=1:
                 # add client connection to server
                 print('\n<---------------------------Received Connection------------------------>')
                 print(f'GOT connection from  IP and Port {client_addr} , with username {msg}')
@@ -323,7 +323,7 @@ def handle_receive_connection():
                 if(check):
                     
                     # send message to client to,let user know login has been authorize
-                    server_socket.sendto(b'AUTHORIZE:',client_addr)
+                    server_socket.sendto(b'AUTHORIZE::',client_addr)
                     # create new client object
                     conn_client = Client(msg, client_addr)
                     # add client to client list
@@ -337,10 +337,12 @@ def handle_receive_connection():
                       
                     print('Unauthorize user try to connect from address:',client_addr)
                     # send message to client to,let user know login has been rejected
-                    server_socket.sendto(b'UNAUTHORIZE:',client_addr)
+                    server_socket.sendto(b'UNAUTHORIZE::',client_addr)
 
             else:
-                pass
+                print('Unauthorize user try to connect from address:',client_addr)
+                # send message to client to,let user know login has been rejected
+                server_socket.sendto(b'FULL::',client_addr)
         else:
             print('Unauthorize machine try to connect from address:',client_addr)
             pass

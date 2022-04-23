@@ -11,8 +11,9 @@ This is a client UDP file
 #######################################################################################################################
 
 """
-    IMPORT ALL IMPORTANT LIBRARIES
+    IMPORT ALL REQUIRE LIBRARIES
 """
+from logging import exception, raiseExceptions
 import cv2, imutils, socket
 import numpy as np
 import time
@@ -25,6 +26,7 @@ BUFF_SIZE = 65536
 
 # Empty list to contain all round trip time
 RTT_list = np.array([])
+
 
 '''
     Create UDP socket
@@ -42,16 +44,25 @@ def create_udp_socket():
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, BUFF_SIZE)
         host_name = socket.gethostname()
-        host_ip =  input('Enter Host IP') # socket.gethostbyname(host_name)
-        port =       int(input('Port number'))   #9998
+        host_ip =  str(input('Enter Host IP\n') )# socket.gethostbyname(host_name)
+        if(len(host_ip) == 0 or host_name is None):
+            raise  Exception('Host IP cannot be empty')
+        port =   int(input('Port number\n'))   #9998
+
         # Set timeout
         client_socket.settimeout(3)
         print('Host ip: - ',host_ip)
-
+    
+    except ValueError as msg:
+        print(f'Port must be the number : {msg} ')
+        exit()
     except socket.error as msg :
 
         print(f'Create Socket error {msg}')
-
+        exit()
+    except Exception as msg:
+        print(f'{msg}')
+        exit()
 
 
 '''
@@ -78,7 +89,8 @@ def receive_broadcast(server):
     print('Start broadcast from server')
     
     try:
-        
+        # global variable
+        global RTT_list 
         fps, st, frames_to_count, cnt = (0, 0, 20, 0)
         while True:
             # record a time before send data to server
@@ -90,8 +102,8 @@ def receive_broadcast(server):
             ending_time  = time.time()
             # calculate a round trip time 
             delay_time = ending_time - initial_time
-            # global variable
-            global RTT_list 
+            
+            
             # append a rtt to a RTT_list
             RTT_list= np.append(RTT_list,delay_time)
 
@@ -136,51 +148,82 @@ def receive_broadcast(server):
 
 
 
+def user_login():
+    
+    try:
+        # let clietn input theirs username
+        name =  str(input('input your name : type quit to exit\n'))
+        
+        # let client input theirs password
+        password = str(input('input your password: type quit to exit\n'))
+        
+        
+        
+        if len(name) == 0 or len(password)==0 :
+            raise ValueError('Username and password cannot be empty')
+        # put username and passwor in format
+        message = 'LOGIN::'+name+'::'+password
+        return message 
+    
+    except ValueError as msg:
+        
+        print(f'please try again {msg}')
+        client_socket.close()
+        exit()
+        
+        
+
+    
+        
+    
+
 '''
     Requestion connection from server
 '''
 def request_connection():
     
-    # let clietn input theirs username
-    name =  input('input your name : type quit to exit\n')
-    # let client input theirs password
-    password = input('input your password: type quit to exit\n')
-    # put username and passwor in format
-    message = 'LOGIN::'+name+'::'+password
+    message  = user_login()
     # convert message into bytes
-    message = bytes(message,'ascii')
-    
-
-  
     try:
-            # send username to a server        
-            client_socket.sendto(message, (host_ip, port))
-            print('Yourname: ',str(message.decode('ascii')))
-            print('Requeting broadcast from server')
-            # receive respond from server
-            packet, server_add =client_socket.recvfrom(BUFF_SIZE)
-            # unpack packet
-            packet = packet.decode()
-            # Check if the message from packet is authorize or unauthorize
-            if(packet == 'UNAUTHORIZE:'):
+        message = bytes(message,'ascii')
+        # send username to a server        
+        client_socket.sendto(message, (host_ip, port))
+        
+        print('Logging in and requeting broadcast from server')
+        # receive respond from server
+        packet, server_add =client_socket.recvfrom(BUFF_SIZE)
+        # unpack packet
+        packet = packet.decode()
+        # Check if the message from packet is authorize or unauthorize
+        if(packet == 'UNAUTHORIZE::'):
 
-                print("Your username is not authorize or password is wrong please try again")
+            raise Exception("Your username is not authorize or password is wrong please try again")
+           
+        elif(packet == 'FULL::'):
+            raise Exception("Server is full please try again later")
+            
+        elif(packet == 'AUTHORIZE::'):
+            # if authorize  start receiveing broadcast    
+            print('Login authorize')
+            # call receive broadcast to receive video streaming form server
+            receive_broadcast((host_ip, port))
 
-            elif(packet == 'AUTHORIZE:'):
-                # if authorize  start receiveing broadcast    
-                print('Login authorize')
-                # call receive broadcast to receive video streaming form server
-                receive_broadcast((host_ip, port))
-
-     # exception for timeout waiting to receive packet from server       
+    # exception for timeout waiting to receive packet from server       
     except socket.timeout as er:
 
             print(f"Connection Timeout to  Server :{er}")
             client_socket.close()
-     # exception socket error
+            exit()
+    # exception socket error
     except socket.error as er:
             print(f"Connection error to  Server :{er}")
             client_socket.close()
+            exit()
+    except Exception as msg:
+            print(f'{msg}')
+            client_socket.close()
+            exit()
+
 
 
 
