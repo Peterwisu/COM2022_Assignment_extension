@@ -89,11 +89,16 @@ def create_udp_socket():
         host_ip = socket.gethostbyname(host_name)
         print('Host IP : - ', host_ip)
         # port number
-        port =   int(input('Port number')) # 9998
+        port =   int(input('Port number\n')) # 9998
     except socket.error as msg:
         # Print Error
         print(f'Create socket error : {msg}')
-
+        print('Server closing')
+        exit()
+    except ValueError as msg:
+        print(f'Port must be the number : {msg} ')
+        print('Server closing')
+        exit()
 
 '''
     Function to bind UDP Socket
@@ -110,6 +115,8 @@ def binding_socket():
         print('listening at :-', socket_address)
     except socket.error as msg:
         print(f'Binding socket error : {msg}')
+        print('Server closing')
+        exit()
 
 
 '''
