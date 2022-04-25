@@ -202,6 +202,8 @@ def request_connection():
         elif(packet == 'FULL::'):
             raise Exception("Server is full please try again later")
             
+        elif packet == 'EXISTED::':
+            raise Exception("USER already login from other address")
         elif(packet == 'AUTHORIZE::'):
             # if authorize  start receiveing broadcast    
             print('Login authorize')

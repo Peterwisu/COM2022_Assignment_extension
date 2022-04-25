@@ -12,6 +12,7 @@ This is a Server UDP file
 """
     IMPORT ALL IMPORTANT LIBRARIES
 """
+from http import client
 import numpy as np
 import imutils
 import socket
@@ -259,22 +260,32 @@ def display_connection():
         print('<-------------------------------------------------------------------->\n')
 
 
+def fake_id(client_name):
+    
+    con = False
+    for c in client_list:
+        
+        if c.name == client_name:
+            
+            return True
+        else :
+            pass
+   
+    return con
+    
+
+
+
 '''
     Authentication login and password of user
 '''
 
-def check_client(client_name,client_password):
-
-    # check that username does exist in authorize list dictionary
-    if client_name in authorize_client.keys():
-
-        # check that the password match with password in dictionary according to user name
-        if client_password == authorize_client[client_name]:
-
-            return True
-        else:
-
-            return False
+def client_auth(client_name,client_password):
+        
+    # check that username does exist in authorize list dictionary and check that the password match with password in dictionary according to user name
+    if client_name in authorize_client.keys() and client_password == authorize_client[client_name] :
+                
+        return True
     else:
         return False
 
@@ -318,16 +329,19 @@ def handle_receive_connection():
 
 
             # limit number of client  to 6
-            if len(client_list) <=1:
+            if len(client_list) <=4:
                 # add client connection to server
                 print('\n<---------------------------Received Connection------------------------>')
                 print(f'GOT connection from  IP and Port {client_addr} , with username {msg}')
                 print('<---------------------------------------------------------------------->\n')
 
+                existed = fake_id(msg)
                 # pass username and password to authentication
-                check = check_client(msg, password )
-              
-                if(check):
+                check = client_auth(msg, password )
+
+                
+                
+                if(check and not existed):
                     
                     # send message to client to,let user know login has been authorize
                     server_socket.sendto(b'AUTHORIZE::',client_addr)
@@ -340,11 +354,16 @@ def handle_receive_connection():
                     # start thread
                     t2.start()
                 
-                else:
+                elif( check == False):
                       
                     print('Unauthorize user try to connect from address:',client_addr)
                     # send message to client to,let user know login has been rejected
                     server_socket.sendto(b'UNAUTHORIZE::',client_addr)
+                
+                elif existed == True:
+                    print(f' User  {msg} try to connect from address :{client_addr} but already login from other address')
+                    # send message to client to,let user know login has been rejected
+                    server_socket.sendto(b'EXISTED::',client_addr)
 
             else:
                 print('Unauthorize user try to connect from address:',client_addr)
