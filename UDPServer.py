@@ -20,6 +20,17 @@ import time
 import base64
 import threading
 import cv2
+import mysql.connector
+from mysql.connector import Error
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+HOST = os.getenv('HOST')
+DATABASE = os.getenv('DATABASE')
+USERNAME = os.getenv('USERNAME')
+PASSWORD = os.getenv('PASSWORD')
 
 """
     IMPORTANT  for mac user type command 'sudo sysctl -w net.inet.udp.maxdgram=65535' to max buffer size for UDP
@@ -67,6 +78,67 @@ class Client:
 
 
 ###########################################################################################################
+
+
+def connect_database(host,database,user,password):
+    global DB_connection
+    
+    try:
+        DB_connection = mysql.connector.connect(host=host,
+                                            database=database,
+                                            user=user,
+                                            password=password)
+        if DB_connection.is_connected():
+               
+            db_Info = DB_connection.get_server_info()
+            print("Connected to MySQL Server version ", db_Info)
+            cursor = DB_connection.cursor()
+            cursor.execute("select database();")
+            record = cursor.fetchone()
+            print("You're connected to database: ", record)
+                      
+    except Error as e:
+            print("Error while connecting to MySQL", e)
+    
+
+
+def db_check_auth_user_pass(username,password):
+    if DB_connection.is_connected():
+               
+            cursor = DB_connection.cursor()
+            cursor.execute(f"select * from users where username ='{str(username)}'")
+            record = cursor.fetchone()
+            print(record[2])
+            
+            if record[1] is not None and password == record[2] :
+                return True
+            else :
+                return False
+    
+
+def user_register(username,password):
+    
+    if DB_connection.is_connected():
+               
+            cursor = DB_connection.cursor()
+            cursor.execute(f"select * from users where username ='{str(username)}'")
+            record = cursor.fetchone()
+            print(record)
+            
+            if record is not None  :
+                return False
+            else :
+                
+                record = cursor.execute(f'INSERT INTO users(username,pass_word) VALUES ("{str(username)}","{str(password)}")')
+                DB_connection.commit()
+                print(record)
+                return True
+    
+    
+
+
+
+
 
 '''  
    Function to create UDP Socket
@@ -310,7 +382,7 @@ def handle_receive_connection():
         msg = msg_split[1]
        
        
-
+        
         
         # if Status is quit then remove client
         if (status == 'QUIT'):
@@ -319,14 +391,21 @@ def handle_receive_connection():
         elif (status == 'RTT'):
 
             pass
-        
+        elif(status=='REGISTER'):
+            password = msg_split[2]
+            if user_register(msg,password):
+                server_socket.sendto(b'REGISTER_SUCC::',client_addr)
+            else:
+                server_socket.sendto(b'REGISTER_FAIL::',client_addr)
+            
+            
         # if Status = LOGIN
         elif(status == 'LOGIN'):
 
             # if status is LOGIN the format should be LOGIN:username:password
             # get the pass word of user
             password = msg_split[2]
-
+                
 
             # limit number of client  to 6
             if len(client_list) <=4:
@@ -337,7 +416,7 @@ def handle_receive_connection():
 
                 existed = fake_id(msg)
                 # pass username and password to authentication
-                check = client_auth(msg, password )
+                check = db_check_auth_user_pass(msg, password )
 
                 
                 
@@ -378,10 +457,16 @@ def handle_receive_connection():
     Start the server
 '''
 def start_server():
+    connect_database(HOST,DATABASE,USERNAME,PASSWORD)
     create_udp_socket()
     binding_socket()
     handle_receive_connection()
 
+# print(HOST,DATABASE,USERNAME,PASSWORD)
+# connect_database(HOST,DATABASE,USERNAME,PASSWORD)
+# get =  user_register('pete2r','12dd34')
+
+# print(get)
 
 start_server()
 

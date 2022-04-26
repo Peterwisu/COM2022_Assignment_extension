@@ -20,6 +20,8 @@ import time
 import base64
 import threading
 import time
+
+
 # buff size
 BUFF_SIZE = 65536
 
@@ -149,7 +151,7 @@ def receive_broadcast(server):
 
 
 def user_login():
-    
+    print('Login Enter Your username and password to login')
     try:
         # let clietn input theirs username
         name =  str(input('input your name : type quit to exit\n'))
@@ -172,7 +174,38 @@ def user_login():
         exit()
         
         
-
+def user_register():
+    
+    
+    try:
+        # let clietn input theirs username
+        name =  str(input('input your name : type quit to exit\n'))
+        
+        # let client input theirs password
+        password = str(input('input your password: type quit to exit\n'))
+        
+        
+        
+        if len(name) == 0 or len(password)==0 :
+            raise ValueError('Username and password cannot be empty')
+        # put username and passwor in format
+        message = 'REGISTER::'+name+'::'+password
+        client_socket.sendto(bytes(message,'ascii'), (host_ip, port))
+        packet, server_add =client_socket.recvfrom(BUFF_SIZE)
+        
+        if packet.decode() =='REGISTER_SUCC::':
+            print("Registration Succesful")
+            return True
+        else:
+            print("Your registration fail")
+            return False
+    
+    except ValueError as msg:
+        
+        print(f'please try again {msg}')
+        client_socket.close()
+        exit()
+    
     
         
     
@@ -227,11 +260,26 @@ def request_connection():
             exit()
 
 
-
-
+def user_choice():
+    
+        choice = str(input('Enter 1 for Login ,2 for Register your account or 0 for exit\n'))
+        
+        if choice == '2':
+              
+            status  = user_register()
+            if status is True:
+               
+                request_connection()
+            
+        elif choice == '1':
+            request_connection()
+        else:
+            exit()
+            
 def start():
     create_udp_socket()
-    request_connection()
+    
+    user_choice()
     # call function get_rtt to ge average ,maximum and minimum rtt time occur while reciving broadcast
     Avg , Max , Min = get_rtt()
     print(f'RTT average : {Avg} , RTT max : {Max} , RTT min : {Min}')
