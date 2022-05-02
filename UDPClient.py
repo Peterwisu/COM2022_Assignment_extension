@@ -20,7 +20,7 @@ import time
 import base64
 import threading
 import time
-
+import sys
 
 # buff size
 BUFF_SIZE = 65536
@@ -97,7 +97,9 @@ def receive_broadcast(server):
         while True:
             # record a time before send data to server
             initial_time = time.time()
-            client_socket.sendto(b'RTT::',(host_ip, port))
+            msg = f"RTT::{name}"
+            
+            client_socket.sendto(base64.b64encode(msg.encode('ascii')),(host_ip, port))
             # receive a packet containing data for vdo streaming
             packet, server_add = client_socket.recvfrom(BUFF_SIZE)
             # record a time after data to server
@@ -105,39 +107,50 @@ def receive_broadcast(server):
             # calculate a round trip time 
             delay_time = ending_time - initial_time
             
-            
+            # print out the round trip time of a packet
+            print(f'Receive {sys.getsizeof(packet)} bytes from {server_add[0]}:{server_add[1]} icmp_seq={len(RTT_list)} time={np.round(delay_time* 1000,2)} ms')
+         
             # append a rtt to a RTT_list
             RTT_list= np.append(RTT_list,delay_time)
+            # unpack packet from datagram and decode it from base64 and ascii
+            data = base64.b64decode(packet,b' /').decode('ascii')
+            
+            # split a message into multiple string seperate  by ::
+            recv_msg = data.split('::')
+            
+           
+            if recv_msg[0] == "VIDEO":
+                # recovery the image data and store in numpy array
+                recv_data  = np.fromstring(recv_msg [1], dtype=np.uint8, sep=' ')
+                # decode streaming data into image
+                frame = cv2.imdecode(recv_data, 1)
+                frame = cv2.putText(frame, 'FPS: ' + str(fps), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.imshow("RECEIVING VIDEO from Server (q:quit)", frame)
+                key = cv2.waitKey(1) & 0xFF
+                # if client click q exit the streaming
+                if key == ord('q'):
+                    # send message quit to server to let server know client have disconnect
+                    msg =b'QUIT::'
+                    client_socket.sendto(base64.b64encode(msg),server)
+                    print('Disconnected to server')
+                    # close socket
+                    client_socket.close()
+                    break
+                # calculate frame rate
+                if cnt == frames_to_count:
+                        try:
+                            fps = round(frames_to_count/(time.time()-st))
+                            st=time.time()
+                            cnt=0
+                        except:
+                            pass
+                cnt+=1
 
-
-            # unpack packet from datagram and decode it
-            data = base64.b64decode(packet,b' /')
-            # recovery the image data and store in numpy array
-            npdata = np.fromstring(data, dtype=np.uint8)
-            # decode streaming data into image
-            frame = cv2.imdecode(npdata, 1)
-            frame = cv2.putText(frame, 'FPS: ' + str(fps), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            cv2.imshow("RECEIVING VIDEO from Server (q:quit)", frame)
-            key = cv2.waitKey(1) & 0xFF
-            # if client click q exit the streaming
-            if key == ord('q'):
-                # send message quit to server to let server know client have disconnect
-                msg =b'QUIT::'
-                client_socket.sendto(msg,server)
-                print('Disconnected to server')
-                # close socket
-                client_socket.close()
-                break
-            # calculate frame rate
-            if cnt == frames_to_count:
-                    try:
-                        fps = round(frames_to_count/(time.time()-st))
-                        st=time.time()
-                        cnt=0
-                    except:
-                        pass
-            cnt+=1
-    
+            if recv_msg[0]== 'FINISH':
+                raise Exception('Video Broadcasting finish')
+            
+            
+            
     # exception for timeout waiting to receive packet from server
     except socket.timeout as err:
         print(f'Connection {err}to Server while receiving broadcast ')
@@ -146,7 +159,12 @@ def receive_broadcast(server):
     except socket.error as err:
         print(f'Connection {err}to Server while receiving broadcast ')
         client_socket.close()
-    
+    except Exception as err:
+        print(err)
+        print("Disconnecting....")
+        print('Closing socket...')
+        client_socket.close()
+
 
 
 
@@ -154,6 +172,7 @@ def user_login():
     print('Login Enter Your username and password to login')
     try:
         # let clietn input theirs username
+        global name
         name =  str(input('input your name : type quit to exit\n'))
         
         # let client input theirs password
@@ -190,16 +209,26 @@ def user_register():
             raise ValueError('Username and password cannot be empty')
         # put username and passwor in format
         message = 'REGISTER::'+name+'::'+password
-        client_socket.sendto(bytes(message,'ascii'), (host_ip, port))
+        client_socket.sendto(base64.b64encode(bytes(message,'ascii')), (host_ip, port))
         packet, server_add =client_socket.recvfrom(BUFF_SIZE)
         
-        if packet.decode() =='REGISTER_SUCC::':
-            print("Registration Succesful")
-            return True
-        else:
-            print("Your registration fail")
-            return False
-    
+        packet =  base64.b64decode(packet,b' /').decode('ascii')
+        
+        
+        packet = packet.split('::')
+        
+        if packet[0] == 'MESSAGE':
+        
+            if  packet[1] =='REGISTER_SUCC':
+                print("Registration Succesful")
+                return True
+            else:
+                print("Your registration fail")
+                return False
+        else :
+            
+            print("receving data back in wrong format")
+        
     except ValueError as msg:
         
         print(f'please try again {msg}')
@@ -220,28 +249,36 @@ def request_connection():
     try:
         message = bytes(message,'ascii')
         # send username to a server        
-        client_socket.sendto(message, (host_ip, port))
+        client_socket.sendto(base64.b64encode(message), (host_ip, port))
         
         print('Logging in and requeting broadcast from server')
         # receive respond from server
         packet, server_add =client_socket.recvfrom(BUFF_SIZE)
         # unpack packet
-        packet = packet.decode()
-        # Check if the message from packet is authorize or unauthorize
-        if(packet == 'UNAUTHORIZE::'):
+        packet =  base64.b64decode(packet,b' /').decode('ascii')
+        
+        
+        packet = packet.split('::')
+        
+        if packet[0] == 'MESSAGE':
+            # Check if the message from packet is authorize or unauthorize
+            if(packet[1] == 'UNAUTHORIZE'):
 
-            raise Exception("Your username is not authorize or password is wrong please try again")
-           
-        elif(packet == 'FULL::'):
-            raise Exception("Server is full please try again later")
+                raise Exception("Your username is not authorize or password is wrong please try again")
             
-        elif packet == 'EXISTED::':
-            raise Exception("USER already login from other address")
-        elif(packet == 'AUTHORIZE::'):
-            # if authorize  start receiveing broadcast    
-            print('Login authorize')
-            # call receive broadcast to receive video streaming form server
-            receive_broadcast((host_ip, port))
+            elif(packet[1] == 'FULL'):
+                raise Exception("Server is full please try again later")
+                
+            elif packet[1] == 'EXISTED':
+                raise Exception("USER already login from other address")
+            elif(packet[1] == 'AUTHORIZE'):
+                # if authorize  start receiveing broadcast    
+                print('Login authorize')
+                # call receive broadcast to receive video streaming form server
+                receive_broadcast((host_ip, port))
+        else :
+            
+            print("receving data back in wrong format")
 
     # exception for timeout waiting to receive packet from server       
     except socket.timeout as er:
@@ -282,7 +319,7 @@ def start():
     user_choice()
     # call function get_rtt to ge average ,maximum and minimum rtt time occur while reciving broadcast
     Avg , Max , Min = get_rtt()
-    print(f'RTT average : {Avg} , RTT max : {Max} , RTT min : {Min}')
+    print(f'RTT average : {np.round(Avg* 1000,2)} ms , RTT max : {np.round(Max* 1000,2)} ms, RTT min : {np.round(Min* 1000,2)} ms')
 
 
     

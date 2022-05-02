@@ -12,7 +12,7 @@ This is a Server UDP file
 """
     IMPORT ALL IMPORTANT LIBRARIES
 """
-from http import client
+
 import numpy as np
 import imutils
 import socket
@@ -42,13 +42,6 @@ BUFF_SIZE = 65536
 client_list = []
 
 
-# Dictionary of authourize client and password 
-authorize_client = {
-    "wish" : '1234',
-    "peter" : '1234',
-    'mouaz' : '1234',
-
-}
 
 '''
     Class Client
@@ -63,6 +56,7 @@ class Client:
     def __init__(self, name, address):
         self.name = name
         self.address = address
+      
 
     # get ip of client
     def get_IP(self):
@@ -71,11 +65,19 @@ class Client:
     # get port of client
     def get_Port(self):
         return self.address[1]
+    
+    def reset_time(self):
+        self.time = 1
+        
+    def increment_time(self):
+        self.time+=1
+        
+    def get_time(self):
+        return self.time
 
     # display details of client
     def Tostring(self):
         return f' Username :- {self.name}  at  IP {self.get_IP()} and Port  {self.get_Port()}'
-
 
 ###########################################################################################################
 
@@ -108,7 +110,7 @@ def db_check_auth_user_pass(username,password):
             cursor = DB_connection.cursor()
             cursor.execute(f"select * from users where username ='{str(username)}'")
             record = cursor.fetchone()
-            print(record[2])
+     
             
             if record[1] is not None and password == record[2] :
                 return True
@@ -123,7 +125,7 @@ def user_register(username,password):
             cursor = DB_connection.cursor()
             cursor.execute(f"select * from users where username ='{str(username)}'")
             record = cursor.fetchone()
-            print(record)
+  
             
             if record is not None  :
                 return False
@@ -135,10 +137,6 @@ def user_register(username,password):
                 return True
     
     
-
-
-
-
 
 '''  
    Function to create UDP Socket
@@ -208,7 +206,10 @@ def broadcast(conn_client):
 
         try:
             # using 0 for web cam
-            vid = cv2.VideoCapture(0)
+            if source ==1 :
+                vid = cv2.VideoCapture(0)
+            else:
+                vid = cv2.VideoCapture(file_path)
             print(f'Broadcasting video to user :{conn_client.Tostring()}')
             #set a size of video
             Width = 400
@@ -222,17 +223,36 @@ def broadcast(conn_client):
                 # encode image format into streaming data 
                 endcoded, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 
-                # encode a image in form of array of number into byte ascii
-                message = base64.b64encode(buffer)
+                # Assigning data in a packet
+                packet = 'VIDEO::'
+                for i in buffer:
+                    packet+=f'{i} '
+                     
+    
+                # encode a image data from an array of number into byte ascii and encode it using base63 encoding again
+                message = base64.b64encode(packet.encode('ascii'))
                 # send to client
               
                 server_socket.sendto(message, conn_client.address)
-
                 # check whether client still connect to server if not change exist to false to exit both inner loop
                 # and outter loop
                 exist = conn_client.address in (i.address for i in client_list)
+                
+                if exist:
+                    client_list[client_list.index(conn_client)].increment_time()
+                   # print(client_list[client_list.index(conn_client)].get_time())
+                    
+                    if client_list[client_list.index(conn_client)].get_time() >= 100:
+                        print('\n')
+                        print('\n<---------------------------Client Timeout--------------------------->\n')
+                        print(f'Connection Timeout from {conn_client.Tostring()} ')
+                        print('\n<-------------------------------------------------------------------->')
+                        disconnect_user(client_list[client_list.index(conn_client)].address)
+                
+                
+                
                 # if client disconnect exit the loop
-                if exist == False:
+                if exist == False  :
                     print(f"Client {conn_client.Tostring()} disconnected ")
                     # exit broadcasting loop
                     break
@@ -241,6 +261,12 @@ def broadcast(conn_client):
         except socket.error as err:
             print(f" error :  {err}")
             server_socket.close()
+            break
+        except AttributeError as err:
+            print(f" Video have finished {err}")
+            packet = 'FINISH::'
+            server_socket.sendto(base64.b64encode(packet.encode('ascii')),conn_client.address)
+            disconnect_user(client_list[client_list.index(conn_client)].address)
             break
 
     print(f'Stop Broadcasting to client {conn_client.Tostring()}')
@@ -347,20 +373,6 @@ def fake_id(client_name):
     
 
 
-
-'''
-    Authentication login and password of user
-'''
-
-def client_auth(client_name,client_password):
-        
-    # check that username does exist in authorize list dictionary and check that the password match with password in dictionary according to user name
-    if client_name in authorize_client.keys() and client_password == authorize_client[client_name] :
-                
-        return True
-    else:
-        return False
-
 '''
     Handle multiple connection from client
 '''
@@ -369,12 +381,12 @@ def handle_receive_connection():
     print('Waiting for client to connect ')
     while True:
         # Receive connection from client
-        msg, client_addr = server_socket.recvfrom(BUFF_SIZE)
+        req, client_addr = server_socket.recvfrom(BUFF_SIZE)
         # unpack packet
-        msg = msg.decode()
+        req = base64.b64decode(req,b' /').decode('ascii')
 
         # split a message into multiple string seperate  by :
-        msg_split = msg.split('::')
+        msg_split = req.split('::')
 
         # first index of array contain status of request
         status = msg_split[0]
@@ -390,13 +402,17 @@ def handle_receive_connection():
         # if status is RTT then pass this is for calculate RTT time in client
         elif (status == 'RTT'):
 
-            pass
+            for i,client  in enumerate (client_list):
+                if client.name == msg:
+                   client_list[i].reset_time()
+                  
+        
         elif(status=='REGISTER'):
             password = msg_split[2]
             if user_register(msg,password):
-                server_socket.sendto(b'REGISTER_SUCC::',client_addr)
+                server_socket.sendto(base64.b64encode(b'MESSAGE::REGISTER_SUCC'),client_addr)
             else:
-                server_socket.sendto(b'REGISTER_FAIL::',client_addr)
+                server_socket.sendto(base64.b64encode(b'MESSAGE::REGISTER_FAIL'),client_addr)
             
             
         # if Status = LOGIN
@@ -423,9 +439,10 @@ def handle_receive_connection():
                 if(check and not existed):
                     
                     # send message to client to,let user know login has been authorize
-                    server_socket.sendto(b'AUTHORIZE::',client_addr)
+                    server_socket.sendto(base64.b64encode(b'MESSAGE::AUTHORIZE'),client_addr)
                     # create new client object
                     conn_client = Client(msg, client_addr)
+                    conn_client.reset_time()
                     # add client to client list
                     connected_user(conn_client)
                     # start thread to handle broadcasting video to client
@@ -437,17 +454,18 @@ def handle_receive_connection():
                       
                     print('Unauthorize user try to connect from address:',client_addr)
                     # send message to client to,let user know login has been rejected
-                    server_socket.sendto(b'UNAUTHORIZE::',client_addr)
+                    server_socket.sendto(base64.b64encode(b'MESSAGE::UNAUTHORIZE'),client_addr)
                 
                 elif existed == True:
                     print(f' User  {msg} try to connect from address :{client_addr} but already login from other address')
                     # send message to client to,let user know login has been rejected
-                    server_socket.sendto(b'EXISTED::',client_addr)
+                    server_socket.sendto(base64.b64encode(b'MESSAGE::EXISTED'),client_addr)
 
             else:
-                print('Unauthorize user try to connect from address:',client_addr)
+                print(f'Server reach the limit of connection with{len(client_list)} ')
+                print('But receive a connection request from :',client_addr )
                 # send message to client to,let user know login has been rejected
-                server_socket.sendto(b'FULL::',client_addr)
+                server_socket.sendto(base64.b64encode(b'MESSAGE::FULL'),client_addr)
         else:
             print('Unauthorize machine try to connect from address:',client_addr)
             pass
@@ -457,6 +475,32 @@ def handle_receive_connection():
     Start the server
 '''
 def start_server():
+    global source
+    global file_path 
+    con =True
+    while con:
+        
+        try:
+            source = int(input('Enter 1 to use your webcam or 2 to use video file for broadcasting\n'))
+            
+            if source == 1 or source == 2 :
+                con = False
+                if(source == 2 ):
+                    
+                    file_path = str(input('please enter file path or file name\n'))
+                    
+                    if not os.path.isfile(file_path):
+                        con = True
+                        print ("File not exist")
+                        raise Exception("File does not exist please try again")     
+            else :
+                
+                raise Exception("Please try again Enter 1 to use your webcam or 2 to use video file for broadcasting")     
+            
+        except ValueError as err:
+            print('Please try again Enter 1 to use your webcam or 2 to use video file for broadcasting')
+        except Exception as err:
+            print(err)
     connect_database(HOST,DATABASE,USERNAME,PASSWORD)
     create_udp_socket()
     binding_socket()
